@@ -1,0 +1,13 @@
+services:
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./test:/test
+    entrypoint: ["k6", "run", "/test/test.js", "--out", "influxdb=http://influxdb:8086/k6"]
+    networks:
+      - monitoring-net
+
+networks:
+  monitoring-net:
+    external: true
+
