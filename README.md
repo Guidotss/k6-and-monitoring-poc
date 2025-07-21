@@ -2,7 +2,116 @@
 
 Un stack completo de observabilidad para pruebas de carga usando K6, InfluxDB y Grafana.
 
-## 🚀 Descripción
+## 🏗️ Arquitectura del Sistema
+
+### Diagrama General de la Arquitectura
+
+```mermaid
+graph TB
+    subgraph "Load Testing Layer"
+        K6[K6 Load Generator]
+        TEST[Test Scripts]
+    end
+    
+    subgraph "Data Storage Layer"
+        INFLUX[InfluxDB<br/>Time Series DB]
+    end
+    
+    subgraph "Visualization Layer"
+        GRAFANA[Grafana<br/>Dashboard]
+        DASHBOARDS[K6 Dashboards]
+    end
+    
+    subgraph "External Systems"
+        TARGET[Target Application<br/>https://test.k6.io]
+    end
+    
+    K6 -->|Generates Load| TARGET
+    K6 -->|Sends Metrics| INFLUX
+    TEST -->|Configures| K6
+    INFLUX -->|Provides Data| GRAFANA
+    GRAFANA -->|Displays| DASHBOARDS
+    
+    style K6 fill:#ff6b6b
+    style INFLUX fill:#4ecdc4
+    style GRAFANA fill:#45b7d1
+    style TARGET fill:#96ceb4
+```
+
+### Flujo de Datos
+
+```mermaid
+sequenceDiagram
+    participant K6 as K6 Load Generator
+    participant TARGET as Target Application
+    participant INFLUX as InfluxDB
+    participant GRAFANA as Grafana
+    
+    Note over K6,GRAFANA: Inicio de la prueba de carga
+    
+    K6->>TARGET: HTTP Request
+    TARGET->>K6: HTTP Response
+    
+    Note over K6: Procesamiento de métricas
+    K6->>INFLUX: Envía métricas en tiempo real
+    Note over INFLUX: Almacenamiento de series temporales
+    
+    loop Durante toda la prueba
+        K6->>TARGET: Múltiples requests
+        TARGET->>K6: Responses
+        K6->>INFLUX: Métricas continuas
+    end
+    
+    Note over GRAFANA: Visualización en tiempo real
+    GRAFANA->>INFLUX: Consulta métricas
+    INFLUX->>GRAFANA: Datos de métricas
+    GRAFANA->>GRAFANA: Actualiza dashboards
+    
+    Note over K6,GRAFANA: Fin de la prueba
+```
+
+### Interacción de Componentes
+
+```mermaid
+graph LR
+    subgraph "Docker Network: monitoring-net"
+        subgraph "Load Test Container"
+            K6[K6 Container<br/>grafana/k6:latest]
+            TEST[Test Scripts<br/>test.js]
+        end
+        
+        subgraph "Monitoring Stack"
+            INFLUX[InfluxDB Container<br/>influxdb:1.8<br/>Port: 8086]
+            GRAFANA[Grafana Container<br/>grafana/grafana:latest<br/>Port: 3000]
+        end
+        
+        subgraph "Persistent Storage"
+            INFLUX_DATA[(InfluxDB Data<br/>Volume)]
+            GRAFANA_DATA[(Grafana Data<br/>Volume)]
+        end
+        
+        subgraph "Configuration"
+            DS[Data Sources<br/>datasources.yaml]
+            DASH[Dashboards<br/>*.json]
+            PROV[Dashboard Provisioning<br/>dashboards.yaml]
+        end
+    end
+    
+    K6 -->|--out influxdb| INFLUX
+    TEST -->|Mounts| K6
+    INFLUX -->|Stores| INFLUX_DATA
+    GRAFANA -->|Stores| GRAFANA_DATA
+    DS -->|Configures| GRAFANA
+    DASH -->|Provides| GRAFANA
+    PROV -->|Manages| GRAFANA
+    
+    style K6 fill:#ff6b6b
+    style INFLUX fill:#4ecdc4
+    style GRAFANA fill:#45b7d1
+```
+
+
+## Descripción
 
 Esta aplicación proporciona una solución completa para realizar pruebas de carga y monitorear el rendimiento en tiempo real. La stack incluye:
 
@@ -10,7 +119,7 @@ Esta aplicación proporciona una solución completa para realizar pruebas de car
 - **InfluxDB**: Base de datos de series temporales para almacenar métricas
 - **Grafana**: Dashboard para visualizar métricas en tiempo real
 
-## 🛠️ Componentes
+## Componentes
 
 ### K6 (Load Generator)
 - **Puerto**: 8081
@@ -20,21 +129,21 @@ Esta aplicación proporciona una solución completa para realizar pruebas de car
 
 ### InfluxDB (Time Series Database)
 - **Puerto**: 8086
-- **Base de datos**: <tu_base_de_datos>
+- **Base de datos**: k6
 - **Funcionalidad**: Almacena métricas de rendimiento en tiempo real
 
 ### Grafana (Dashboard)
-- **Puerto**: 3001
+- **Puerto**: 3000
 - **Funcionalidad**: Visualización de métricas y dashboards en tiempo real
 - **Credenciales**: Configuradas mediante variables de entorno
 
-## 📋 Prerrequisitos
+## Prerrequisitos
 
 - Docker
 - Docker Compose
 - Variables de entorno configuradas
 
-## ⚙️ Configuración
+## Configuración
 
 ### 1. Variables de Entorno
 
@@ -46,7 +155,7 @@ GF_SECURITY_ADMIN_USER=admin
 GF_SECURITY_ADMIN_PASSWORD=admin123
 
 # InfluxDB Configuration
-INFLUXDB_DB=grafana
+INFLUXDB_DB=k6
 INFLUXDB_USER=admin
 INFLUXDB_PASSWORD=admin123
 ```
@@ -55,14 +164,26 @@ INFLUXDB_PASSWORD=admin123
 
 ```
 k6-observability-stack/
-├── docker-compose.yml
-├── k6/
-│   └── test.js
-├── architecture_diagram.svg
+├── load-test/
+│   └── k6/
+│       ├── docker-compose.yaml
+│       └── test/
+│           └── test.js
+├── monitoring/
+│   ├── docker-compose.yaml
+│   └── grafana-provisioning/
+│       ├── dashboards/
+│       │   ├── k6-load-test.json
+│       │   ├── k6-simple-dashboard.json
+│       │   └── k6-vus-test.json
+│       ├── dashboards.yaml
+│       └── datasources/
+│           └── datasources.yaml
+├── .env.example
 └── README.md
 ```
 
-## 🚀 Instalación y Uso
+## Instalación y Uso
 
 ### 1. Clonar el repositorio
 
@@ -78,59 +199,107 @@ cp .env.example .env
 # Editar .env con tus credenciales
 ```
 
-### 3. Ejecutar la aplicación
+### 3. Crear la red de Docker
 
 ```bash
+docker network create monitoring-net
+```
+
+### 4. Ejecutar el stack de monitoreo
+
+```bash
+cd monitoring
 docker-compose up -d
 ```
 
-### 4. Acceder a los servicios
+### 5. Ejecutar las pruebas de carga
 
-- **Grafana Dashboard**: http://localhost:3001
+```bash
+cd ../load-test/k6
+docker-compose up
+```
+
+### 6. Acceder a los servicios
+
+- **Grafana Dashboard**: http://localhost:3000
   - Usuario: admin
-  - Contraseña: admin123 (o la configurada en .env)
+  - Contraseña: admin (o la configurada en .env)
 
 - **InfluxDB**: http://localhost:8086
-  - Base de datos: grafana
+  - Base de datos: k6
 
-## 📈 Configuración de Grafana
+## Configuración de Grafana
 
 ### 1. Configurar fuente de datos InfluxDB
 
-1. Accede a Grafana en http://localhost:3001
-2. Ve a **Configuration** → **Data Sources**
-3. Agrega una nueva fuente de datos **InfluxDB**
-4. Configuración:
-   - **URL**: http://influxdb:8086
-   - **Database**: grafana
-   - **User**: admin
-   - **Password**: admin123
+La fuente de datos InfluxDB se configura automáticamente mediante el archivo `datasources.yaml`:
 
-### 2. Importar dashboards
+```yaml
+datasources:
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    isDefault: true
+    url: http://influxdb:8086
+    database: k6
+    user: admin
+    password: admin
+```
 
-Puedes importar dashboards predefinidos para K6 o crear los tuyos propios.
+### 2. Dashboards Automáticos
 
-## 🧪 Ejecutar Pruebas de Carga
+Los dashboards se importan automáticamente desde la carpeta `dashboards/`:
+
+- **k6-load-test.json**: Dashboard completo para pruebas de carga
+- **k6-simple-dashboard.json**: Dashboard simplificado
+- **k6-vus-test.json**: Dashboard enfocado en usuarios virtuales
+
+## Ejecutar Pruebas de Carga
 
 ### Modificar el script de prueba
 
-Edita `k6/test.js` para personalizar tus pruebas:
+Edita `load-test/k6/test/test.js` para personalizar tus pruebas:
 
 ```javascript
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import { Rate } from 'k6/metrics';
+
+// Custom metric
+const errorRate = new Rate('errors');
 
 export let options = {
-  vus: 5,        // Número de usuarios virtuales
-  duration: '60s', // Duración de la prueba
+  stages: [
+    { duration: '30s', target: 5 }, 
+    { duration: '1m', target: 10 },  
+    { duration: '30s', target: 0 },  
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<500'], 
+    http_req_failed: ['rate<0.1'],   
+  },
 };
 
 export default function () {
-  let res = http.get('https://test.k6.io'); // Tu endpoint
+  const urls = [
+    'https://test.k6.io',
+    'https://httpbin.org/delay/1',
+    'https://httpbin.org/status/200',
+    'https://httpbin.org/status/404',
+  ];
+  
+  const url = urls[Math.floor(Math.random() * urls.length)];
+  
+  const res = http.get(url);
+  
+  sleep(Math.random() * 2 + 0.5);
+  
   check(res, {
     'status is 200': (r) => r.status === 200,
+    'response time < 500ms': (r) => r.timings.duration < 500,
   });
-  sleep(1);
+  
+  errorRate.add(res.status !== 200);
 }
 ```
 
@@ -138,13 +307,14 @@ export default function () {
 
 ```bash
 # Ejecutar con Docker Compose
-docker-compose up k6
+cd load-test/k6
+docker-compose up
 
 # O ejecutar K6 directamente
-docker run -i --rm -v $(pwd)/k6:/scripts grafana/k6 run /scripts/test.js
+docker run -i --rm -v $(pwd)/test:/scripts grafana/k6 run /scripts/test.js
 ```
 
-## 📊 Métricas Disponibles
+## Métricas Disponibles
 
 Las siguientes métricas se recopilan automáticamente:
 
@@ -154,18 +324,27 @@ Las siguientes métricas se recopilan automáticamente:
 - **Virtual users** (usuarios concurrentes)
 - **Data transfer** (bytes enviados/recibidos)
 
-## 🔧 Personalización
+## Personalización
 
 ### Cambiar el endpoint de prueba
 
-Edita `k6/test.js` y modifica la URL:
+Edita `load-test/k6/test/test.js` y modifica la URL:
 
 ```javascript
 // Cambiar de:
-let res = http.get('https://test.k6.io');
+const urls = [
+  'https://test.k6.io',
+  'https://httpbin.org/delay/1',
+  'https://httpbin.org/status/200',
+  'https://httpbin.org/status/404',
+];
 
 // A tu endpoint:
-let res = http.get('http://tu-aplicacion.com/api');
+const urls = [
+  'http://tu-aplicacion.com/api',
+  'http://tu-aplicacion.com/api/users',
+  'http://tu-aplicacion.com/api/products',
+];
 ```
 
 ### Ajustar parámetros de carga
@@ -196,7 +375,7 @@ export let options = {
 
 3. **Puertos ocupados**
    - Cambia los puertos en `docker-compose.yml`
-   - Verifica qué servicios usan los puertos: `lsof -i :3001`
+   - Verifica qué servicios usan los puertos: `lsof -i :3000`
 
 ### Logs útiles
 
@@ -210,7 +389,7 @@ docker-compose logs influxdb
 docker-compose logs k6
 ```
 
-## 📚 Recursos Adicionales
+## Recursos Adicionales
 
 - [K6 Documentation](https://k6.io/docs/)
 - [InfluxDB Documentation](https://docs.influxdata.com/)
