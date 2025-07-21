@@ -2,7 +2,7 @@
 
 Un stack completo de observabilidad para pruebas de carga usando K6, InfluxDB y Grafana.
 
-## 🏗️ Arquitectura del Sistema
+## Arquitectura del Sistema
 
 ### Diagrama General de la Arquitectura
 
