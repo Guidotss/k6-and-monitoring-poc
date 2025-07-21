@@ -8,6 +8,8 @@ services:
       - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
     volumes: 
       - grafana-data:/var/lib/grafana
+    networks:
+      - testnet
   
   influxdb: 
     image: influxdb:1.8
@@ -18,15 +20,26 @@ services:
       - INFLUXDB_USER=${INFLUXDB_USER}
       - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}
       - INFLUXDB_ADMIN_ENABLED=true
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+    networks:
+      - testnet
   
   k6:
     image: grafana/k6:latest
     ports: 
-      - 8081:8081
+      - 5665:5665
+    environment: 
+      - K6_WEB_DASHBOARD=true
     volumes: 
       - ./k6:/scripts
-    entrypoint: ["k6", "run", "/scripts/test.js", "--out", "influxdb=http://influxdb:8086/grafana"]
-  
+    entrypoint: ["k6", "run", "/scripts/test.js", "--out", "influxdb=http://influxdb:8086/${INFLUXDB_DB}"]
+    networks:
+      - testnet
 
 volumes: 
   grafana-data: 
+  influxdb-data:
+
+networks:
+  testnet:
